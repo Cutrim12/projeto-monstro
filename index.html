@@ -2,7 +2,8 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#070709" />
   <title>PROJETO MONSTRO // IRON PROTOCOL</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -24,6 +25,7 @@
       --accent-fat: #f59e0b;
       --accent-kcal: #22c55e;
       --accent-water: #06b6d4;
+      --accent-burn: #fb923c;
       --border-color: #272b36;
       --danger-bg: rgba(153, 27, 27, 0.35);
       --danger-text: #fca5a5;
@@ -65,7 +67,6 @@
       margin: 0 auto;
     }
 
-    /* HEADER / BANNER DE GUERRA */
     .hero-banner {
       background: linear-gradient(135deg, #161920 0%, #0d0f13 60%, #1c140d 100%);
       border: 1px solid var(--border-color);
@@ -264,6 +265,7 @@
     .fill-prot  { background: linear-gradient(90deg, #b91c1c, #f87171); }
     .fill-fat   { background: linear-gradient(90deg, #d97706, #fbbf24); }
     .fill-water { background: linear-gradient(90deg, #0891b2, #22d3ee); }
+    .fill-burn  { background: linear-gradient(90deg, #ea580c, #fb923c); }
     .fill-gold  { background: linear-gradient(90deg, #b45309, #f59e0b, #fde047); }
 
     .form-group {
@@ -341,6 +343,14 @@
       font-size: 0.82rem;
     }
 
+    .btn-burn {
+      background: rgba(251, 146, 60, 0.16);
+      border: 1px solid rgba(251, 146, 60, 0.45);
+      color: #fdba74;
+      flex: 1;
+      font-size: 0.82rem;
+    }
+
     .btn-danger {
       background-color: var(--danger-bg);
       color: var(--danger-text);
@@ -369,6 +379,26 @@
     .quick-btn:hover {
       border-color: var(--iron-gold);
       color: var(--iron-gold-bright);
+    }
+
+    .burn-box {
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border-color);
+    }
+
+    .burn-controls {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .burn-controls input {
+      width: 110px;
+      padding: 7px 9px;
+      font-size: 0.86rem;
     }
 
     ul {
@@ -513,7 +543,7 @@
       </div>
     </div>
     <p class="macro-sub">
-      Cálculo automático em tempo real: Proteína + Carboidrato (4 kcal/g) + Gordura (0.9 g/kg a 9 kcal/g) e Hidratação (40 ml/kg).
+      Cálculo automático em tempo real: Proteína + Carboidrato (4 kcal/g) + Gordura (0.9 g/kg a 9 kcal/g), Hidratação (40 ml/kg) e Gasto Ativo do Smartwatch.
     </p>
   </div>
 
@@ -565,7 +595,25 @@
         </div>
       </div>
 
-      <div class="macro-item" style="margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border-color);">
+      <div class="burn-box">
+        <div class="macro-header">
+          <span>⌚ GASTO ATIVO (SMARTWATCH)</span>
+          <span id="burnedText">0 kcal</span>
+        </div>
+        <div class="progress-bg">
+          <div class="progress-fill fill-burn" id="burnBar"></div>
+        </div>
+        <div class="macro-sub" id="burnImpactSub">Meta base: 0 kcal • Com smartwatch: 0 kcal</div>
+        <div class="burn-controls">
+          <input type="number" id="customBurnInput" min="1" max="5000" placeholder="Kcal relógio" />
+          <button type="button" class="btn-burn" onclick="applyCustomBurn()">Definir / Somar</button>
+          <button type="button" class="btn-burn" onclick="addBurn(150)">+150</button>
+          <button type="button" class="btn-burn" onclick="addBurn(300)">+300</button>
+          <button type="button" class="btn-danger" onclick="clearBurn()" title="Zerar gasto do relógio">Zerar</button>
+        </div>
+      </div>
+
+      <div class="macro-item" style="margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border-color);">
         <div class="macro-header">
           <span>💧 HIDRATAÇÃO &amp; VOLUME CELULAR</span>
           <span id="waterText">0 / 0 ml</span>
@@ -686,7 +734,7 @@
 </div>
 
 <script>
-  const STORAGE_KEY = 'projeto_monstro_iron_v1';
+  const STORAGE_KEY = 'projeto_monstro_iron_v2';
 
   const MOTIVATION_QUOTES = [
     '"LIGHT WEIGHT BABY! NENHUM FÍSICO DE ELITE É CONSTRUÍDO COM DESCULPAS."',
@@ -718,6 +766,7 @@
     carbFactorBulking: 5.0,
     protFactor: 2.0,
     waterMl: 0,
+    burnedKcal: 0,
     meals: [],
     weightLogs: [
       { id: Date.now() - 86400000, date: formatPtBrDate(getTodayKey()), weight: 71.0, note: 'Ponto de Partida' }
@@ -735,6 +784,7 @@
       if (parsed.dateKey !== today) {
         parsed.dateKey = today;
         parsed.waterMl = 0;
+        parsed.burnedKcal = 0;
         parsed.meals = [];
       }
       return parsed;
@@ -796,12 +846,36 @@
     const protTarget = Math.round(w * state.protFactor);
     const fatTarget = Math.round(w * 0.9);
     const macroKcal = (carbTarget * 4) + (protTarget * 4) + (fatTarget * 9);
-    const kcalTarget = state.mode === 'cutting'
+    const baseKcalTarget = state.mode === 'cutting'
       ? Math.max(1500, Math.round(macroKcal * 0.85))
       : Math.round(macroKcal * 1.10);
+    const effectiveKcalTarget = baseKcalTarget + Math.max(0, Math.round(state.burnedKcal || 0));
     const waterTarget = Math.round(w * 40);
 
-    return { kcalTarget, carbTarget, protTarget, fatTarget, waterTarget };
+    return { baseKcalTarget, effectiveKcalTarget, carbTarget, protTarget, fatTarget, waterTarget };
+  }
+
+  function addBurn(amountKcal) {
+    state.burnedKcal = Math.max(0, Math.round((state.burnedKcal || 0) + amountKcal));
+    saveState();
+    renderAll();
+  }
+
+  function applyCustomBurn() {
+    const el = document.getElementById('customBurnInput');
+    const val = parseFloat(el.value);
+    if (Number.isNaN(val) || val < 0) return;
+    // Define o gasto total informado pelo smartwatch (ex.: 420 kcal no relógio)
+    state.burnedKcal = Math.round(val);
+    el.value = '';
+    saveState();
+    renderAll();
+  }
+
+  function clearBurn() {
+    state.burnedKcal = 0;
+    saveState();
+    renderAll();
   }
 
   function previewMealKcal() {
@@ -866,9 +940,10 @@
   }
 
   function resetDay() {
-    if (!confirm('Zerar todas as refeições e hidratação de hoje?')) return;
+    if (!confirm('Zerar refeições, gasto do smartwatch e hidratação de hoje?')) return;
     state.meals = [];
     state.waterMl = 0;
+    state.burnedKcal = 0;
     saveState();
     renderAll();
   }
@@ -909,7 +984,7 @@
 
   function updateMotivation(totals, targets) {
     const protRatio = targets.protTarget > 0 ? totals.prot / targets.protTarget : 0;
-    const kcalRatio = targets.kcalTarget > 0 ? totals.kcal / targets.kcalTarget : 0;
+    const kcalRatio = targets.effectiveKcalTarget > 0 ? totals.kcal / targets.effectiveKcalTarget : 0;
     const avgRatio = (protRatio + kcalRatio) / 2;
 
     let rank = 'NÍVEL: AQUECENDO OS MOTORES';
@@ -955,18 +1030,24 @@
 
     updateMotivation(totals, targets);
 
-    document.getElementById('kcalText').textContent = `${Math.round(totals.kcal)} / ${targets.kcalTarget} kcal`;
+    document.getElementById('kcalText').textContent = `${Math.round(totals.kcal)} / ${targets.effectiveKcalTarget} kcal`;
     document.getElementById('carbText').textContent = `${totals.carb.toFixed(1)} / ${targets.carbTarget} g`;
     document.getElementById('protText').textContent = `${totals.prot.toFixed(1)} / ${targets.protTarget} g`;
     document.getElementById('fatText').textContent = `${totals.fat.toFixed(1)} / ${targets.fatTarget} g`;
     document.getElementById('waterText').textContent = `${state.waterMl} / ${targets.waterTarget} ml`;
 
-    const remKcal = targets.kcalTarget - Math.round(totals.kcal);
-    document.getElementById('kcalRemaining').textContent = remKcal >= 0
-      ? `Saldo restante para bater a meta: ${remKcal} kcal`
-      : `Excedente calórico do dia: +${Math.abs(remKcal)} kcal`;
+    const burned = Math.max(0, Math.round(state.burnedKcal || 0));
+    document.getElementById('burnedText').textContent = `${burned} kcal`;
+    document.getElementById('burnImpactSub').textContent =
+      `Meta base: ${targets.baseKcalTarget} kcal + Smartwatch: ${burned} kcal = ${targets.effectiveKcalTarget} kcal`;
+    setBar('burnBar', burned, 600);
 
-    setBar('kcalBar', totals.kcal, targets.kcalTarget);
+    const remKcal = targets.effectiveKcalTarget - Math.round(totals.kcal);
+    document.getElementById('kcalRemaining').textContent = remKcal >= 0
+      ? `Saldo disponível (já com smartwatch): ${remKcal} kcal`
+      : `Excedente calórico líquido do dia: +${Math.abs(remKcal)} kcal`;
+
+    setBar('kcalBar', totals.kcal, targets.effectiveKcalTarget);
     setBar('carbBar', totals.carb, targets.carbTarget);
     setBar('protBar', totals.prot, targets.protTarget);
     setBar('fatBar', totals.fat, targets.fatTarget);
